@@ -6,6 +6,7 @@ import subprocess
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from weights import WeightsDownloadCache
+from PIL import Image
 
 import numpy as np
 import torch
@@ -174,9 +175,11 @@ class Predictor(BasePredictor):
         print("Loading safety checker...")
         if not os.path.exists(SAFETY_CACHE):
             download_weights(SAFETY_URL, SAFETY_CACHE)
-        self.safety_checker = StableDiffusionSafetyChecker.from_pretrained(
-            SAFETY_CACHE, torch_dtype=torch.float16
-        ).to("cuda")
+        self.safety_checker = None
+        
+        # self.safety_checker = StableDiffusionSafetyChecker.from_pretrained(
+        #     SAFETY_CACHE, torch_dtype=torch.float16
+        # ).to("cuda")
         self.feature_extractor = CLIPImageProcessor.from_pretrained(FEATURE_EXTRACTOR)
 
         if not os.path.exists(SDXL_MODEL_CACHE):
@@ -277,11 +280,11 @@ class Predictor(BasePredictor):
         ),
         width: int = Input(
             description="Width of output image",
-            default=1024,
+            default=768,
         ),
         height: int = Input(
             description="Height of output image",
-            default=1024,
+            default=768,
         ),
         num_outputs: int = Input(
             description="Number of images to output.",
@@ -340,7 +343,7 @@ class Predictor(BasePredictor):
         ),
         disable_safety_checker: bool = Input(
             description="Disable safety checker for generated images. This feature is only available through the API. See [https://replicate.com/docs/how-does-replicate-work#safety](https://replicate.com/docs/how-does-replicate-work#safety)",
-            default=False,
+            default=True,
         ),
     ) -> List[Path]:
         """Run a single prediction on the model."""
@@ -376,6 +379,10 @@ class Predictor(BasePredictor):
             pipe = self.img2img_pipe
         else:
             print("txt2img mode")
+            if width > 1024:
+                width = int(width * .5)
+            if height > 1024:
+                height = int(height * .5)
             sdxl_kwargs["width"] = width
             sdxl_kwargs["height"] = height
             pipe = self.txt2img_pipe
@@ -429,12 +436,17 @@ class Predictor(BasePredictor):
 
         output_paths = []
         for i, image in enumerate(output.images):
+            if width == 768 and height == 768:
+                # For images going to animate diff, give what it can handle
+                scaled_image = image.resize((512, 512), Image.BICUBIC)
+            else:
+                scaled_image = image
             if not disable_safety_checker:
                 if has_nsfw_content[i]:
                     print(f"NSFW content detected in image {i}")
                     continue
             output_path = f"/tmp/out-{i}.png"
-            image.save(output_path)
+            scaled_image.save(output_path)
             output_paths.append(Path(output_path))
 
         if len(output_paths) == 0:

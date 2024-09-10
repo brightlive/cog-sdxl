@@ -379,10 +379,15 @@ class Predictor(BasePredictor):
             pipe = self.img2img_pipe
         else:
             print("txt2img mode")
-            if width > 1024:
-                width = int(width * .5)
-            if height > 1024:
-                height = int(height * .5)
+            # When requesting HD sizes, keep it in multiples of 8 at sub-1024 dimensions SDXL can handle
+            if width == 1080:
+                width = 768
+            elif width == 1920:
+                width = 1344
+            if height == 1080:
+                height = 768
+            elif height == 1920:
+                height = 1344
             sdxl_kwargs["width"] = width
             sdxl_kwargs["height"] = height
             pipe = self.txt2img_pipe
@@ -439,6 +444,11 @@ class Predictor(BasePredictor):
             if width == 768 and height == 768:
                 # For images going to animate diff, give what it can handle
                 scaled_image = image.resize((512, 512), Image.BICUBIC)
+            elif width == 768 and height == 1344:
+                # We are on the OpenSora path, scale down to a size it can handle
+                scaled_image = image.resize((528, 944), Image.BICUBIC)
+            elif width == 1344 and height == 768:
+                scaled_image = image.resize((944, 528), Image.BICUBIC)
             else:
                 scaled_image = image
             if not disable_safety_checker:
